@@ -1,0 +1,548 @@
+<!doctype html>
+ <html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+    <title>Building the Main Loop With Clojure</title>
+
+    <link rel="stylesheet" href="css/reveal.css">
+    <link rel="stylesheet" href="css/theme/black.css">
+
+    <!-- Theme used for syntax highlighting of code -->
+    <link rel="stylesheet" href="lib/css/zenburn.css">
+
+    <!-- Printing and PDF exports -->
+    <script>
+      var link = document.createElement( 'link' );
+      link.rel = 'stylesheet';
+      link.type = 'text/css';
+      link.href = window.location.search.match( /print-pdf/gi ) ? 'css/print/pdf.css' : 'css/print/paper.css';
+      document.getElementsByTagName( 'head' )[0].appendChild( link );
+    </script>
+
+    <style>
+      div.slides h3 small { vertical-align: middle; }
+      div.slides ul { list-style-type: square; }
+      div.slides section.references img { width: 3em; height: 2.25em; }
+    </style>
+  </head>
+  <body>
+    <div class="reveal">
+      <div class="slides">
+        <section>
+          <section><h1>Main Loop</h1></section>
+        </section>
+        <section>
+          <section data-background-image="teacup.gif" data-background-opacity="0.2">
+            <h2>(LOOP EYE HAND COMPUTER)</h2>
+          </section>
+          <section>
+            <h3>Simplest Possible Main-Loop</h3>
+            <p class="fragment">...and it is possibly useless</p>
+          </section>
+          <section>
+            <h3>Bare Bones Main-Loop</h3>
+            <pre><code data-trim data-noescape>
+              (defn main-loop [dt]
+                (update dt)
+                (render dt))
+            </code></pre>
+            <p class="fragment">But, where is the state (world)?</p>
+          </section>
+          <section>
+            <h3>Main-Loop with State as an Explicit Argument</h3>
+            <pre><code data-trim data-noescape>
+              (defn main-loop [world dt]
+                (let [new-world (update world dt)]
+                  (render new-world dt)
+                  new-world))
+            </code></pre>
+            <p class="fragment">But, where are the user inputs (events)?</p>
+          </section>
+          <section>
+            <h3>Main-Loop with State & Events as Arguments</h3>
+            <pre><code data-trim data-noescape>
+              (defn main-loop [world events dt]
+                (let [new-world (update world events dt)]
+                  (render new-world dt)
+                  new-world))
+            </code></pre>
+            <p class="fragment">Not bad.</p>
+          </section>
+        </section>
+        <section>
+          <section data-background-image="keypress.gif" data-background-opacity="0.2">
+            <h1>60FPS</h1>
+          </section>
+          <section>
+            <h2>\[{1000 \over 60} = 16.6\overline{6}\]</h2>
+            <p>&nbsp</p>
+            <p class="fragment">We need to call render once every 16.667ms to keep our game running at 60fps.</p>
+          </section>
+          <section data-transition="slide-in fade-out">
+            <pre><code data-trim data-noescape>
+                [................] 0/16 ms
+                [                ]
+                [                ]
+            </code></pre>
+          </section>
+          <section data-transition="fade-in fade-out">
+            <pre><code data-trim data-noescape>
+                [UUUUU...........] 5/16 ms
+                [                ]
+                [                ]
+            </code></pre>
+          </section>
+          <section data-transition="fade-in fade-out">
+            <pre><code data-trim data-noescape>
+                [UUUUURRR........] 8/16 ms
+                [                ]
+                [                ]
+            </code></pre>
+          </section>
+          <section data-transition="fade-in fade-out">
+            <pre><code data-trim data-noescape>
+                [UUUUURRR........]
+                [UUURRRRRRRRRRRRR] 16/16 ms
+                [                ]
+            </code></pre>
+          </section>
+          <section data-transition="fade-in slide-out">
+            <pre><code data-trim data-noescape>
+                [UUUUURRR........]
+                [UUURRRRRRRRRRRRR] 16/16 ms
+                [RRRRRRRRRRR.....] 11/16 ms
+            </code></pre>
+          </section>
+          <section data-background-image="ackchyually.png" data-background-opacity="0.2">
+            <ol>
+              <li><span class="fragment">Should we schedule <code>update</code> immediately after <code>render</code>?</span></li>
+              <li><span class="fragment">Should we run <code>render</code> and <code>update</code> in separate threads?</span></li>
+            </ol>
+          </section>
+        </section>
+        <section>
+          <section data-background-image="pipes.gif" data-background-opacity="0.2">
+            <h2>Under The Hood</h2>
+          </section>
+          <section>
+            <h3>What Time Is It?</h3>
+            <div class="fragment">
+              <p>Basically...</p>
+              <pre><code data-trim data-noescape>
+                (defn timestamp [] (System/currentTimeMillis))
+              </code></pre>
+            </div>
+            <div class="fragment">
+              <p>...but more precisely</p>
+              <pre><code data-trim data-noescape>
+                (defn timestamp []
+                  (-> (System/nanoTime)
+                  (/ 1000000.0)))
+              </code></pre>
+            </div>
+          </section>
+          <section>
+            <h3>Counting Time</h3>
+            <pre><code data-trim data-noescape>
+              (defn make-dtfn []
+                (let [t (atom (timestamp))]
+                  (fn []
+                    (let [now (timestamp)
+                      dt (- now @t)]
+                      (reset! t now)
+                      dt))))
+            </code></pre>
+            <div class="fragment">
+              <p>Usage:</p>
+              <pre><code data-trim data-noescape>
+                (let [dtfn (make-dtfn)]
+                  (println (dtfn))         ;; 0.12153200060129166
+                  (Thread/sleep 1000)
+                  (println (dtfn))         ;; 1001.2701580002904
+                  (println (dtfn))         ;; 0.9757639989256859
+                  (Thread/sleep 1000)
+                  (println (dtfn)))        ;; 1061.0490560010076
+              </code></pre>
+            </div>
+            <p class="fragment">Practically integers should be alright.</p>
+          </section>
+          <section>
+            <h3>Exit Game</h3>
+            <pre class="fragment"><code data-trim data-noescape>
+              (def escape-hatch (promise))
+
+              (while (not (realized? escape-hatch))
+                ...)
+
+              (deliver escape-hatch nil)
+            </code></pre>
+          </section>
+        </section>
+        <section>
+          <section data-background-image="cauldron.gif" data-background-opacity="0.3">
+            <h2>Calling Main-Loop</h2>
+          </section>
+          <section>
+            <h3>Frame Rate <small>vs</small> Rate of Update</h3>
+            <p>Are they supposed to be equal?</p>
+            <ul>
+              <li><span class="fragment">Frame rate can be boosted or degraded according to system resources.</span></li>
+              <li><span class="fragment">Updates should be frequent, and rate of updates should be stable.</span></li>
+              <li><span class="fragment">Updates should take into consideration time passed rather than assuming a constant period.</span></li>
+              <li><span class="fragment">Care must be taken to present a consistent world if the rendering is happening in a separate thread.</span></li>
+            </ul>
+          </section>
+          <section data-transition="slide-in fade-out">
+            <h3>Tight, Infinite Loop</h3>
+            <pre><code data-trim data-noescape>
+              (let [dtfn (make-dtfn)]
+                (loop [world (make-world)]
+                  (let [events (query-events)
+                        dt (dtfn)]
+                    (recur (main-loop world events dt)))))
+
+
+
+
+              &nbsp
+            </code></pre>
+          </section>
+          <section data-transition="fade-in fade-out">
+            <h3>Infinite Cooperative Loop</h3>
+            <pre><code data-trim data-noescape>
+              (let [dtfn (make-dtfn)]
+                (loop [world (make-world)]
+                  (let [events (query-events)
+                        dt (dtfn)
+                        new-world (main-loop world events dt)]
+                    (Thread/yield)                     ;; <--
+                    (recur new-world))))
+
+
+              &nbsp;
+            </code></pre>
+          </section>
+          <section data-transition="fade-in slide-out">
+            <h3>Terminating Cooperative Loop</h3>
+            <pre><code data-trim data-noescape>
+              (let [dtfn (make-dtfn)
+                    escape-hatch (promise)]            ;; <--
+                (loop [world (make-world)]
+                  (let [events (query-events)
+                        dt (dtfn)
+                        new-world (main-loop world events dt escape-hatch)]
+                    (if-not (realized? escape-hatch)   ;; <--
+                      (do
+                        (Thread/yield)
+                        (recur new-world))))))
+            </code></pre>
+          </section>
+        </section>
+        <section>
+          <section data-background-image="wild.gif" data-background-opacity="0.2">
+            <h1>Case Studies</h1>
+          </section>
+          <section>
+            <h2>Case Study 1: LÖVE</h2>
+            <p><a href="https://love2d.org/">love2d.org</a></p>
+            <pre class="fragment"><code data-trim data-noescape>
+              function love.load() ... end
+
+              function love.update() ... end
+
+              function love.draw() ... end
+            </code></pre>
+          </section>
+          <section>
+            <h3>LÖVE Example</h3>
+            <pre><code data-trim data-noescape><small>
+              -- Example: Basic callbacks
+
+              function love.load()
+                love.graphics.setFont(
+                  love.graphics.newFont(11)
+                )
+              end
+
+              elapsed = 0
+
+              -- Update: Called each frame. Update the
+              -- state of your game here.
+              function love.update(dt)
+                elapsed = elapsed + dt
+              end
+
+              -- Draw: Called each frame. The game
+              -- should be drawn in this functions.
+              function love.draw()
+                love.graphics.print(
+                  "Elapsed time: " .. elapsed, 100, 100
+                )
+              end
+            </small></code></pre>
+            <p><small><a href="https://github.com/love2d-community/LOVE-Example-Browser/blob/master/examples/051_callbacks_basic.lua">051_callbacks_basic.lua</a></small></p>
+          </section>
+          <section>
+            <h3>LÖVE Main Loop</h3>
+            <pre><code data-trim data-noescape><small>
+              function love.run()
+                      if love.load then love.load(love.arg.parseGameArguments(arg), arg) end
+
+                      -- We don't want the first frame's dt to include time taken by love.load.
+                      if love.timer then love.timer.step() end
+
+                      local dt = 0
+
+                      -- Main loop time.
+                      return function()
+                              -- Process events.
+                              if love.event then
+                                      love.event.pump()
+                                      for name, a,b,c,d,e,f in love.event.poll() do
+                                              if name == "quit" then
+                                                      if not love.quit or not love.quit() then
+                                                              return a or 0
+                                                      end
+                                              end
+                                              love.handlers[name](a,b,c,d,e,f)
+                                      end
+                              end
+
+                              -- Update dt, as we'll be passing it to update
+                              if love.timer then dt = love.timer.step() end
+
+                              -- Call update and draw
+                              if love.update then love.update(dt) end -- will pass 0 if love.timer is disabled
+
+                              if love.graphics and love.graphics.isActive() then
+                                      love.graphics.origin()
+                                      love.graphics.clear(love.graphics.getBackgroundColor())
+
+                                      if love.draw then love.draw() end
+
+                                      love.graphics.present()
+                              end
+
+                              if love.timer then love.timer.sleep(0.001) end
+                      end
+
+              end
+            </small></code></pre>
+            <p><small><a href="https://bitbucket.org/rude/love/src/7f05ef5fa6b0d73e4a4e18b45d5d5773fb156345/src/scripts/boot.lua">boot.lua</a></small></p>
+          </section>
+          <section>
+            <h3>LÖVE Main Loop - Abbreviated Version</h3>
+            <pre><code data-trim data-noescape>
+              function love.run()
+                -- Process events.
+                dt = ...
+                love.update(dt)
+                love.draw()
+                love.graphics.present()
+                love.timer.sleep(0.001)
+              end
+            </code></pre>
+          </section>
+          <section>
+            <h3>Case Study 2: play-cljs</h3>
+            <p><a href="https://github.com/oakes/play-cljs">github.com/oakes/play-cljs</a></p>
+            <pre><code data-trim data-noescape>
+              (defprotocol Screen
+                (on-show [screen])
+                (on-hide [screen])
+                (on-render [screen])
+
+             (defprotocol Game
+               (start [game])
+               ...
+               (render [game content])
+               ...
+               (get-screen [game])
+               (set-screen [game screen])
+               ...)
+            </code></pre>
+          </section>
+          <section>
+            <h3>play-cljs Example</h3>
+            <pre><code data-trim data-noescape><small>
+              (reify p/Screen
+                (on-show [this]
+                  (reset! state {:text-x 20 :text-y 30}))
+
+                (on-hide [this])
+
+                (on-render [this]
+                  (p/render game
+                    [[:fill {:color "lightblue"}
+                      [:rect {:x 0 :y 0 :width 500 :height 500}]]
+                     [:fill {:color "black"}
+                      [:text {:value "Hello, world!"
+                              :x (:text-x @state)
+                              :y (:text-y @state)
+                              :size 16
+                              :font "Georgia"
+                              :style :italic}]]])
+                  (swap! state update :text-x inc)))
+            </small></code></pre>
+            <p><small><a href="https://github.com/oakes/play-cljs/blob/master/README.md#documentation">README.md</a></small></p>
+          </section>
+          <section>
+            <h3>play-cljs Main Loop</h3>
+            <pre><code data-trim data-noescape><small>
+              this._draw = function() {
+                var now = window.performance.now();
+                var time_since_last = now - this._lastFrameTime;
+                var target_time_between_frames = 1000 / this._targetFrameRate;
+
+                // only draw if we really need to; don't overextend the browser.
+                // draw if we're within 5ms of when our next frame should paint
+                // (this will prevent us from giving up opportunities to draw
+                // again when it's really about time for us to do so). fixes an
+                // issue where the frameRate is too low if our refresh loop isn't
+                // in sync with the browser. note that we have to draw once even
+                // if looping is off, so we bypass the time delay if that
+                // is the case.
+                var epsilon = 5;
+                if (
+                  !this._loop ||
+                  time_since_last >= target_time_between_frames - epsilon
+                ) {
+                  //mandatory update values(matrixs and stack)
+
+                  this.redraw();
+                  this._frameRate = 1000.0 / (now - this._lastFrameTime);
+                  this._lastFrameTime = now;
+
+                  // If the user is actually using mouse module, then update
+                  // coordinates, otherwise skip. We can test this by simply
+                  // checking if any of the mouse functions are available or not.
+                  // NOTE : This reflects only in complete build or modular build.
+                  if (typeof this._updateMouseCoords !== 'undefined') {
+                    this._updateMouseCoords();
+                  }
+                }
+
+                // get notified the next time the browser gives us
+                // an opportunity to draw.
+                if (this._loop) {
+                  this._requestAnimId = window.requestAnimationFrame(this._draw);
+                }
+              }.bind(this);
+
+              this._setProperty = function(prop, value) {
+                this[prop] = value;
+                if (this._isGlobal) {
+                  window[prop] = value;
+                }
+              }.bind(this);
+            </small></code></pre>
+            <p><small><a href="https://github.com/processing/p5.js/blob/master/src/core/main.js">main.js</a></small></p>
+          </section>
+          <section>
+            <h3>play-cljs Main Loop - continued</h3>
+            <pre><code data-trim data-noescape><small>
+              p5.prototype.redraw = function(n) {
+                var numberOfRedraws = parseInt(n);
+                if (isNaN(numberOfRedraws) || numberOfRedraws < 1) {
+                  numberOfRedraws = 1;
+                }
+
+                var context = this._isGlobal ? window : this;
+                var userSetup = context.setup;
+                var userDraw = context.draw;
+                if (typeof userDraw === 'function') {
+                  if (typeof userSetup === 'undefined') {
+                    context.scale(context._pixelDensity, context._pixelDensity);
+                  }
+                  var callMethod = function(f) {
+                    f.call(context);
+                  };
+                  for (var idxRedraw = 0; idxRedraw < numberOfRedraws; idxRedraw++) {
+                    context.resetMatrix();
+                    if (context._renderer.isP3D) {
+                      context._renderer._update();
+                    }
+                    context._setProperty('frameCount', context.frameCount + 1);
+                    context._registeredMethods.pre.forEach(callMethod);
+                    userDraw();
+                    context._registeredMethods.post.forEach(callMethod);
+                  }
+                }
+              };
+            </small></code></pre>
+            <p><small><a href="https://github.com/processing/p5.js/blob/master/src/core/structure.js">structure.js</a></small></p>
+          </section>
+          <section>
+            <h3>Case Study 3: The Caves of Clojure</h3>
+            <p><a href="http://stevelosh.com/blog/2012/07/caves-of-clojure-01/">The Caves of Clojure: Part 1</a></p>
+            <p><img src="caves.png" /></p>
+          </section>
+          <section>
+            <h3>TCoC Main Loop</h3>
+            <pre><code data-trim data-noescape>
+              (defn run-game [game screen]
+                (loop [{:keys [input uis] :as game} game]
+                  (when (seq uis)
+                    (recur (if input
+                             (-> game
+                               (dissoc :input)
+                               (process-input input))
+                             (-> game
+                               (update-in [:world] tick-all)
+                               (draw-game screen)
+                               (clear-messages)
+                               (get-input screen)))))))
+            </code></pre>
+            <p><small><a href="https://github.com/sjl/caves/blob/master/src/caves/core.clj">core.clj</a></small></p>
+            <p class="fragment"><small>Note: <code>get-input</code> blocks.</small></p>
+          </section>
+        </section>
+	<section>
+	  <h2>Thanks!</h2>
+	  <p>
+	    <a href="https://muhuk.github.io/clojure-time-travel">muhuk.github.io/clojure-main-loop</a>
+	  </p>
+	</section>
+        <section class="references">
+          <h2>References</h2>
+          <ul style="columns: 3; list-style-type: none;">
+            <li><a href="https://giphy.com/gifs/meme-image-know-K79kKDx86GMik"><img src="teacup.gif" /></a></li>
+            <li><a href="https://giphy.com/gifs/corsairgaming-run-esc-RJY9uBeiiF4qc"><img src="keypress.gif" /></a></li>
+            <li><a href="https://giphy.com/gifs/animation-loop-water-l0Iy97YlcRro7VEHe"><img src="pipes.gif" /></a></li>
+            <li><a href="https://giphy.com/gifs/black-and-white-witches-sabrina-the-teenage-witch-tNWSLtkQh0Oli"><img src="cauldron.gif" /></a></li>
+            <li><a href="https://knowyourmeme.com/memes/ackchyually"><img src="ackchyually.png" /></a></li>
+            <li><a href="https://giphy.com/gifs/fighting-giraffes-j3jpSEciMC2mk"><img src="wild.gif" /></a></li>
+            <li><a href="http://stevelosh.com/blog/2012/07/caves-of-clojure-04/"><img src="caves.png" /></a></li>
+          </ul>
+        </section>
+      </div>
+    </div>
+
+    <script src="lib/js/head.min.js"></script>
+    <script src="js/reveal.js"></script>
+
+    <script>
+      // More info about config & dependencies:
+      // - https://github.com/hakimel/reveal.js#configuration
+      // - https://github.com/hakimel/reveal.js#dependencies
+      Reveal.initialize({
+        math: {
+          mathjax: 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js',
+          config: 'TeX-AMS_HTML-full'  // See http://docs.mathjax.org/en/latest/config-files.html
+        },
+        dependencies: [
+          { src: 'plugin/markdown/marked.js' },
+          { src: 'plugin/markdown/markdown.js' },
+          { src: 'plugin/notes/notes.js', async: true },
+          { src: 'plugin/highlight/highlight.js', async: true, callback: function() { hljs.initHighlightingOnLoad(); } },
+          { src: 'plugin/math/math.js', async: true }
+        ],
+        history: true,
+        fragmentInURL: true,
+        slideNumber: 'c/t'
+      });
+    </script>
+  </body>
+ </html>
