@@ -348,20 +348,21 @@
           <section>
             <h3>Case Study 2: play-cljs</h3>
             <p><a href="https://github.com/oakes/play-cljs">github.com/oakes/play-cljs</a></p>
-            <pre class="fragment"><code data-trim data-noescape>
+            <pre class="fragment"><code data-trim data-noescape class="hljs clojure">
               (defprotocol Screen
                 (on-show [screen])
                 (on-hide [screen])
                 (on-render [screen])
-
-             (defprotocol Game
-               (start [game])
-               ...
-               (render [game content])
-               ...
-               (get-screen [game])
-               (set-screen [game screen])
-               ...)
+            </code></pre>
+            <pre class="fragment"><code data-trim data-noescape class="hljs clojure">
+              (defprotocol Game
+                (start [game])
+                ...
+                (render [game content])
+                ...
+                (get-screen [game])
+                (set-screen [game screen])
+                ...)
             </code></pre>
           </section>
           <section>
