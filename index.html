@@ -412,7 +412,7 @@
                 ) {
                   //mandatory update values(matrixs and stack)
 
-                  this.redraw();
+                  <mark>this.redraw();</mark>
                   this._frameRate = 1000.0 / (now - this._lastFrameTime);
                   this._lastFrameTime = now;
 
@@ -467,7 +467,7 @@
                     }
                     context._setProperty('frameCount', context.frameCount + 1);
                     context._registeredMethods.pre.forEach(callMethod);
-                    userDraw();
+                    <mark>userDraw();</mark>
                     context._registeredMethods.post.forEach(callMethod);
                   }
                 }
